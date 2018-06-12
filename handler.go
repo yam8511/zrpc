@@ -8,11 +8,8 @@ import (
 	"strings"
 )
 
-// Handler HTTP處理
-type Handler int
-
 // ServeHTTP 服務處理
-func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.RequestURI == "/favicon.ico" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -38,6 +35,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.URL.Path = strings.Replace(r.URL.Path, "/debug", "/debug/pprof", 1)
 		// log.Println("#2 Req -> ", r.URL.Path)
 		pprof.Index(w, r)
+		return
+	}
+
+	if r.URL.EscapedPath() == "/reflect" {
+		err := json.NewEncoder(w).Encode(server.Services)
+		if err != nil {
+			log.Println("Response Encode Error ->", err)
+			return
+		}
 		return
 	}
 

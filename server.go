@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -8,6 +9,8 @@ import (
 	"net/rpc/jsonrpc"
 	"os"
 	"os/signal"
+	"reflect"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -23,6 +26,13 @@ type Server struct {
 	HTTPNet     net.Listener
 	HTTPServer  *http.Server
 	Timeout     int64
+	Services    []Service
+}
+
+// Service 服務
+type Service struct {
+	Name    string            `json:"name"`
+	Methods map[string]string `json:"methods"`
 }
 
 // Init 初始化
@@ -53,7 +63,7 @@ func (server *Server) Init() error {
 
 	if server.HTTPServer == nil {
 		server.HTTPServer = &http.Server{
-			Handler: new(Handler),
+			Handler: server,
 		}
 	}
 
@@ -127,44 +137,55 @@ func (server *Server) SetTimeout(second int64) {
 // Register 註冊服務
 func (server *Server) Register(service interface{}) {
 	rpc.Register(service)
+	name, methods := ReflectMethod(service)
+	server.Services = append(server.Services, Service{
+		Name:    name,
+		Methods: methods,
+	})
+	fmt.Println("=============================")
+	fmt.Println("註冊新服務 ->", name)
+	for methodName, methodType := range methods {
+		fmt.Printf("方法 %s -> %s\n", methodName, methodType)
+	}
+	fmt.Println("=============================")
 }
 
 // RegisterName 註冊服務
 func (server *Server) RegisterName(name string, service interface{}) {
 	rpc.RegisterName(name, service)
+	_, methods := ReflectMethod(service)
+	server.Services = append(server.Services, Service{
+		Name:    name,
+		Methods: methods,
+	})
+	fmt.Println("=============================")
+	fmt.Println("註冊新服務 ->", name)
+	for methodName, methodType := range methods {
+		fmt.Printf("方法 %s -> %s\n", methodName, methodType)
+	}
+	fmt.Println("=============================")
+
+}
+
+// ReflectMethod 反映服務可用方法
+func ReflectMethod(service interface{}) (name string, methods map[string]string) {
+	name = reflect.TypeOf(service).String()
+	methods = map[string]string{}
+	// 遍历对象中的方法
+	for m := 0; m < reflect.TypeOf(service).NumMethod(); m++ {
+		method := reflect.TypeOf(service).Method(m)
+		methodType := strings.Replace(method.Type.String(), name+", ", "", 1)
+		methods[method.Name] = methodType
+	}
+	name = strings.Replace(name, "*main.", "", 1)
+	return
 }
 
 // Listen 監聽連線
 func (server *Server) Listen() error {
 	// 檢查連線設定
-	if server.RPCNet == nil || server.RPCNet.Addr().Network() == "" {
-		l, e := net.Listen("tcp", server.GetRPCAddress())
-		if e != nil {
-			return e
-		}
-		server.RPCNet = l
-	}
-
-	if server.JSONRPCNet == nil || server.JSONRPCNet.Addr().Network() == "" {
-		l, e := net.Listen("tcp", server.GetJSONRPCAddress())
-		if e != nil {
-			return e
-		}
-		server.JSONRPCNet = l
-	}
-
-	if server.HTTPNet == nil || server.HTTPNet.Addr().Network() == "" {
-		l, e := net.Listen("tcp", server.GetHTTPAddress())
-		if e != nil {
-			return e
-		}
-		server.HTTPNet = l
-	}
-
-	if server.HTTPServer == nil {
-		server.HTTPServer = &http.Server{
-			Handler: new(Handler),
-		}
+	if err := server.Init(); err != nil {
+		return err
 	}
 
 	// 設置關閉機制
