@@ -27,6 +27,7 @@ type Server struct {
 	HTTPServer  *http.Server
 	Timeout     int64
 	Services    []Service
+	Debug       bool
 }
 
 // Service 服務
@@ -68,6 +69,11 @@ func (server *Server) Init() error {
 	}
 
 	return nil
+}
+
+// DebugMode 設定Debug模式
+func (server *Server) DebugMode(debug bool) {
+	server.Debug = debug
 }
 
 // SetRPCNet 設定RPC網路

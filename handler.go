@@ -15,27 +15,29 @@ func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch r.URL.EscapedPath() {
-	case "/debug/pprof/cmdline":
-		pprof.Cmdline(w, r)
-		return
-	case "/debug/pprof/profile":
-		pprof.Profile(w, r)
-		return
-	case "/debug/pprof/symbol":
-		pprof.Symbol(w, r)
-		return
-	case "/debug/pprof/trace":
-		pprof.Trace(w, r)
-		return
-	}
-	if strings.HasPrefix(r.RequestURI, "/debug/") {
-		r.URL.Path = strings.Replace(r.URL.Path, "/debug/pprof", "/debug", 1)
-		// log.Println("#1 Req -> ", r.URL.Path)
-		r.URL.Path = strings.Replace(r.URL.Path, "/debug", "/debug/pprof", 1)
-		// log.Println("#2 Req -> ", r.URL.Path)
-		pprof.Index(w, r)
-		return
+	if server.Debug {
+		switch r.URL.EscapedPath() {
+		case "/debug/pprof/cmdline":
+			pprof.Cmdline(w, r)
+			return
+		case "/debug/pprof/profile":
+			pprof.Profile(w, r)
+			return
+		case "/debug/pprof/symbol":
+			pprof.Symbol(w, r)
+			return
+		case "/debug/pprof/trace":
+			pprof.Trace(w, r)
+			return
+		}
+		if strings.HasPrefix(r.RequestURI, "/debug/") {
+			r.URL.Path = strings.Replace(r.URL.Path, "/debug/pprof", "/debug", 1)
+			// log.Println("#1 Req -> ", r.URL.Path)
+			r.URL.Path = strings.Replace(r.URL.Path, "/debug", "/debug/pprof", 1)
+			// log.Println("#2 Req -> ", r.URL.Path)
+			pprof.Index(w, r)
+			return
+		}
 	}
 
 	if r.URL.EscapedPath() == "/reflect" {
