@@ -7,6 +7,8 @@ import (
 	"net/rpc"
 	"net/rpc/jsonrpc"
 	"time"
+
+	"github.com/yam8511/zrpc"
 )
 
 // Arith 數學運算
@@ -31,7 +33,7 @@ func (t *Arith) Diff(args *Args, diff *int) error {
 }
 
 func main() {
-	server := new(Server)
+	server := new(zrpc.Server)
 	isClient := flag.Bool("c", false, "if run client")
 	flag.Parse()
 

@@ -1,10 +1,11 @@
-package main
+package zrpc
 
 import (
 	"encoding/json"
 	"log"
 	"net/http"
 	"net/http/pprof"
+	"net/rpc/jsonrpc"
 	"strings"
 )
 
@@ -110,4 +111,15 @@ func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		log.Println("Response Encode Error ->", err)
 		return
 	}
+}
+
+func transferJSONRPCClient(address, method string, params interface{}) (res interface{}, err error) {
+	client, dialErr := jsonrpc.Dial("tcp", address)
+	if dialErr != nil {
+		err = dialErr
+		return
+	}
+	defer client.Close()
+	err = client.Call(method, params, &res)
+	return
 }
