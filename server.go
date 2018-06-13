@@ -30,10 +30,9 @@ type Server struct {
 	Debug       bool
 }
 
-// Service 服務
-type Service struct {
-	Name    string            `json:"name"`
-	Methods map[string]string `json:"methods"`
+// NewServer 建立一個伺服器
+func NewServer() *Server {
+	return new(Server)
 }
 
 // Init 初始化

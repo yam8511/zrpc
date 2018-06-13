@@ -9,6 +9,29 @@ import (
 	"strings"
 )
 
+// Input 輸出參數
+type Input struct {
+	Service string      `json:"service"`
+	Method  string      `json:"method"`
+	Params  interface{} `json:"params"`
+	ID      int         `json:"id"`
+	Address string      `json:"address"`
+}
+
+// ErrorDetail 錯誤細節
+type ErrorDetail struct {
+	Code    int         `json:"code"`
+	Message string      `json:"message"`
+	Data    interface{} `json:"data"`
+}
+
+// Output 輸出參數
+type Output struct {
+	Result interface{} `json:"result"`
+	Error  interface{} `json:"error"`
+	ID     int         `json:"id"`
+}
+
 // ServeHTTP 服務處理
 func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.RequestURI == "/favicon.ico" {
@@ -41,7 +64,7 @@ func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if r.URL.EscapedPath() == "/reflect" {
+	if r.URL.EscapedPath() == "/services" {
 		err := json.NewEncoder(w).Encode(server.Services)
 		if err != nil {
 			log.Println("Response Encode Error ->", err)
@@ -50,22 +73,6 @@ func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	type Input struct {
-		Method  string      `json:"method"`
-		Params  interface{} `json:"params"`
-		ID      int         `json:"id"`
-		Address string      `json:"address"`
-	}
-	type ErrorDetail struct {
-		Code    int         `json:"code"`
-		Message string      `json:"message"`
-		Data    interface{} `json:"data"`
-	}
-	type Output struct {
-		Result interface{} `json:"result"`
-		Error  interface{} `json:"error"`
-		ID     int         `json:"id"`
-	}
 	w.Header().Set("Content-Type", "application/json")
 	var data Input
 	err := json.NewDecoder(r.Body).Decode(&data)
@@ -85,7 +92,7 @@ func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.Println("Input ->", data)
 	address := data.Address
 	if address == "" {
-		address = ":50052"
+		address = server.GetJSONRPCAddress()
 	}
 	res, err := transferJSONRPCClient(address, data.Method, data.Params)
 	if err != nil {
@@ -109,6 +116,93 @@ func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		log.Println("Response Encode Error ->", err)
+		return
+	}
+}
+
+// ServeHTTP 服務處理
+func (proxy *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.EscapedPath() == "/registry" {
+		var s []Service
+		for _, srv := range proxy.Services {
+			s = append(s, srv)
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"services": s,
+		})
+		return
+	}
+	if r.URL.EscapedPath() != proxy.PrefixPath {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	var data Input
+	err := json.NewDecoder(r.Body).Decode(&data)
+	if err != nil {
+		log.Println("JSON Error ->", err)
+		err = json.NewEncoder(w).Encode(Output{
+			Result: nil,
+			Error: ErrorDetail{
+				Code:    500,
+				Message: err.Error(),
+				Data:    err,
+			},
+			ID: data.ID,
+		})
+		if err != nil {
+			log.Println("Response Encode Error ->", err)
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	}
+	log.Println("Input ->", data)
+	service, ok := proxy.Services[data.Service]
+	if !ok {
+		err = json.NewEncoder(w).Encode(Output{
+			Result: nil,
+			Error: ErrorDetail{
+				Code:    500,
+				Message: "Service Not Found",
+				Data:    "Service: " + data.Service,
+			},
+			ID: data.ID,
+		})
+		if err != nil {
+			log.Println("Response Encode Error ->", err)
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	}
+
+	res, err := transferJSONRPCClient(service.Address, data.Method, data.Params)
+	if err != nil {
+		log.Println("Call Error ->", err)
+		err = json.NewEncoder(w).Encode(Output{
+			Result: nil,
+			Error: ErrorDetail{
+				Code:    500,
+				Message: err.Error(),
+				Data:    err,
+			},
+			ID: data.ID,
+		})
+		if err != nil {
+			log.Println("Response Encode Error ->", err)
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	}
+
+	err = json.NewEncoder(w).Encode(Output{
+		Result: res,
+		Error:  nil,
+		ID:     data.ID,
+	})
+	if err != nil {
+		log.Println("Response Encode Error ->", err)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 }
