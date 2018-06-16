@@ -29,7 +29,7 @@ func (t *Arith) Diff(args *Args, diff *int) error {
 
 func main() {
 	arith := new(Arith)
-	server := new(zrpc.Server)
+	server := zrpc.NewServer()
 	server.RegisterName("arith", arith)
 	go func() {
 		if err := server.Listen(); err != nil {
@@ -38,7 +38,7 @@ func main() {
 	}()
 
 	proxy := zrpc.NewProxy()
-	proxy.AddService("Arith", server.GetJSONRPCAddress())
+	proxy.AddService("Arith", server.GetJSONRPCAddress(), server.GetHTTPAddress())
 	err := proxy.Listen()
 	if err != nil {
 		panic(err)

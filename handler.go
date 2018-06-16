@@ -39,7 +39,7 @@ func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if server.Debug {
+	if server.debug {
 		switch r.URL.EscapedPath() {
 		case "/debug/pprof/cmdline":
 			pprof.Cmdline(w, r)
@@ -56,28 +56,28 @@ func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		if strings.HasPrefix(r.RequestURI, "/debug/") {
 			r.URL.Path = strings.Replace(r.URL.Path, "/debug/pprof", "/debug", 1)
-			// log.Println("#1 Req -> ", r.URL.Path)
+			// log.Println("[ZRPC] #1 Req -> ", r.URL.Path)
 			r.URL.Path = strings.Replace(r.URL.Path, "/debug", "/debug/pprof", 1)
-			// log.Println("#2 Req -> ", r.URL.Path)
+			// log.Println("[ZRPC] #2 Req -> ", r.URL.Path)
 			pprof.Index(w, r)
 			return
 		}
 	}
 
+	defer w.Header().Set("Content-Type", "application/json")
 	if r.URL.EscapedPath() == "/services" {
 		err := json.NewEncoder(w).Encode(server.Services)
 		if err != nil {
-			log.Println("Response Encode Error ->", err)
+			log.Println("[ZRPC] Response Encode Error ->", err)
 			return
 		}
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	var data Input
 	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {
-		log.Println("JSON Error ->", err)
+		log.Println("[ZRPC] JSON Error ->", err)
 		json.NewEncoder(w).Encode(Output{
 			Result: nil,
 			Error: ErrorDetail{
@@ -89,14 +89,16 @@ func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	log.Println("Input ->", data)
+	if server.debug {
+		log.Println("[ZRPC] Input ->", data)
+	}
 	address := data.Address
 	if address == "" {
 		address = server.GetJSONRPCAddress()
 	}
 	res, err := transferJSONRPCClient(address, data.Method, data.Params)
 	if err != nil {
-		log.Println("Call Error ->", err)
+		log.Println("[ZRPC] Call Error ->", err)
 		json.NewEncoder(w).Encode(Output{
 			Result: nil,
 			Error: ErrorDetail{
@@ -115,7 +117,7 @@ func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ID:     data.ID,
 	})
 	if err != nil {
-		log.Println("Response Encode Error ->", err)
+		log.Println("[ZRPC] Response Encode Error ->", err)
 		return
 	}
 }
@@ -132,6 +134,11 @@ func (proxy *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	if proxy.ui && strings.HasPrefix(r.URL.EscapedPath(), "/ui") {
+		proxy.WebUI(w, r)
+		return
+	}
+
 	if r.URL.EscapedPath() != proxy.PrefixPath {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -141,7 +148,7 @@ func (proxy *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var data Input
 	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {
-		log.Println("JSON Error ->", err)
+		log.Println("[ZRPC] JSON Error ->", err)
 		err = json.NewEncoder(w).Encode(Output{
 			Result: nil,
 			Error: ErrorDetail{
@@ -152,12 +159,14 @@ func (proxy *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ID: data.ID,
 		})
 		if err != nil {
-			log.Println("Response Encode Error ->", err)
+			log.Println("[ZRPC] Response Encode Error ->", err)
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 		return
 	}
-	log.Println("Input ->", data)
+	if proxy.debug {
+		log.Printf("[ZRPC] Server (%s), Redirect to %s", data.Service, data.Address)
+	}
 	service, ok := proxy.Services[data.Service]
 	if !ok {
 		err = json.NewEncoder(w).Encode(Output{
@@ -170,15 +179,15 @@ func (proxy *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ID: data.ID,
 		})
 		if err != nil {
-			log.Println("Response Encode Error ->", err)
+			log.Println("[ZRPC] Response Encode Error ->", err)
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 		return
 	}
 
-	res, err := transferJSONRPCClient(service.Address, data.Method, data.Params)
+	res, err := transferJSONRPCClient(service.RPCAddress, data.Method, data.Params)
 	if err != nil {
-		log.Println("Call Error ->", err)
+		log.Println("[ZRPC] Call Error ->", err)
 		err = json.NewEncoder(w).Encode(Output{
 			Result: nil,
 			Error: ErrorDetail{
@@ -189,7 +198,7 @@ func (proxy *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ID: data.ID,
 		})
 		if err != nil {
-			log.Println("Response Encode Error ->", err)
+			log.Println("[ZRPC] Response Encode Error ->", err)
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 		return
@@ -201,7 +210,7 @@ func (proxy *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ID:     data.ID,
 	})
 	if err != nil {
-		log.Println("Response Encode Error ->", err)
+		log.Println("[ZRPC] Response Encode Error ->", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}

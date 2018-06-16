@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 )
 
 // Proxy 代理伺服
@@ -17,8 +18,9 @@ type Proxy struct {
 	HTTPAddr   string
 	HTTPNet    net.Listener
 	HTTPServer *http.Server
-	Timeout    int64
-	UI         bool
+	timeout    int64
+	ui         bool
+	debug      bool
 	mx         *sync.RWMutex
 }
 
@@ -28,6 +30,9 @@ func NewProxy() (p *Proxy) {
 		Services: map[string]Service{},
 		mx:       new(sync.RWMutex),
 	}
+	p.SetHTTPAddress(os.Getenv("ZRPC_PROXY_ADDRESS"))
+	p.EnableWebUI(os.Getenv("ZRPC_ENABLE_UI") == "true")
+	p.DebugMode(os.Getenv("ZRPC_DEBUG_MODE") == "true")
 	return
 }
 
@@ -46,64 +51,101 @@ func (proxy *Proxy) Init() error {
 
 	if proxy.HTTPServer == nil {
 		proxy.HTTPServer = &http.Server{
-			Handler: proxy,
+			Handler:      proxy,
+			WriteTimeout: time.Duration(proxy.timeout),
+			ReadTimeout:  time.Duration(proxy.timeout),
 		}
 	}
 	return nil
 }
 
 // AddService 新增服務
-func (proxy *Proxy) AddService(name, addr string) {
+func (proxy *Proxy) AddService(name, rpcAddr, httpAddr string) *Proxy {
+	if proxy.debug {
+		log.Println("[ZRPC] =============================")
+		log.Println("[ZRPC] 註冊新服務 ->", name)
+		log.Println("[ZRPC] TCP 服務位址 ->", rpcAddr)
+		log.Println("[ZRPC] HTTP 服務位址 ->", httpAddr)
+		log.Println("[ZRPC] =============================")
+	}
 	proxy.mx.Lock()
 	defer proxy.mx.Unlock()
 	service, ok := proxy.Services[name]
 	if ok {
-		service.Address = addr
+		service.RPCAddress = rpcAddr
+		service.HTTPAddress = httpAddr
 	} else {
 		service = Service{
-			Name:    name,
-			Address: addr,
+			Name:        name,
+			RPCAddress:  rpcAddr,
+			HTTPAddress: httpAddr,
 		}
 	}
 	proxy.Services[name] = service
+	return proxy
+}
+
+// DebugMode 設定Debug模式
+func (proxy *Proxy) DebugMode(debug bool) *Proxy {
+	if debug {
+		log.Println("[ZRPC] Proxy Debug Mode: On")
+	} else {
+		log.Println("[ZRPC] Proxy Debug Mode: Off")
+	}
+	proxy.debug = debug
+	return proxy
 }
 
 // SetHTTPNet 設定HTTP網路
-func (proxy *Proxy) SetHTTPNet(n net.Listener) {
+func (proxy *Proxy) SetHTTPNet(n net.Listener) *Proxy {
 	proxy.HTTPNet = n
+	return proxy
 }
 
 // SetHTTPAddress 設定HTTP連線網址
-func (proxy *Proxy) SetHTTPAddress(addr string) {
+func (proxy *Proxy) SetHTTPAddress(addr string) *Proxy {
 	proxy.HTTPAddr = addr
+	return proxy
 }
 
 // SetHTTPServer 設定HTTP-Server
-func (proxy *Proxy) SetHTTPServer(h *http.Server) {
+func (proxy *Proxy) SetHTTPServer(h *http.Server) *Proxy {
 	proxy.HTTPServer = h
+	return proxy
 }
 
 // GetHTTPAddress 取HTTP的連線網址
 func (proxy *Proxy) GetHTTPAddress() string {
 	if proxy.HTTPAddr == "" {
+		if addr := os.Getenv("ZRPC_PROXY_ADDRESS"); addr != "" {
+			return addr
+		}
 		return ":8081"
 	}
 	return proxy.HTTPAddr
 }
 
 // SetTimeout 設定連線逾時秒數
-func (proxy *Proxy) SetTimeout(second int64) {
-	proxy.Timeout = second
+func (proxy *Proxy) SetTimeout(second int64) *Proxy {
+	proxy.timeout = second
+	return proxy
 }
 
 // EnableWebUI 啟動界面
-func (proxy *Proxy) EnableWebUI(enable bool) {
-	proxy.UI = enable
+func (proxy *Proxy) EnableWebUI(enable bool) *Proxy {
+	if enable {
+		log.Println("[ZRPC] Web UI: On")
+	} else {
+		log.Println("[ZRPC] Web UI: Off")
+	}
+	proxy.ui = enable
+	return proxy
 }
 
 // SetPrefixPath 設定前綴
-func (proxy *Proxy) SetPrefixPath(path string) {
+func (proxy *Proxy) SetPrefixPath(path string) *Proxy {
 	proxy.PrefixPath = path
+	return proxy
 }
 
 // Listen 監聽服務
@@ -118,40 +160,25 @@ func (proxy *Proxy) Listen() error {
 		err error
 		sig = make(chan os.Signal)
 		c   = make(chan int)
-		e   = make(chan error)
-		wg  = new(sync.WaitGroup)
 	)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL)
 	go func() {
+		s := <-sig
+		log.Printf("[ZRPC] ... Receive signal, shutdown by ... %v", s)
+		close(c)
+		proxy.HTTPServer.Close()
+	}()
+
+	log.Println("[ZRPC] HTTP Server Listening ... ", proxy.HTTPNet.Addr().Network(), proxy.HTTPNet.Addr().String())
+	err = proxy.HTTPServer.Serve(proxy.HTTPNet)
+	if err != nil {
 		select {
-		case s := <-sig:
-			log.Printf("... Receive signal, shutdown by ... %v", s)
-			close(c)
-			proxy.HTTPServer.Close()
-		case err = <-e:
-			log.Printf("... Listen get error ... %s", err.Error())
-			close(c)
-			proxy.HTTPServer.Close()
+		case <-c:
+			return nil
+		default:
+			log.Printf("[ZRPC] ... Listen get error ... %s", err.Error())
+			return err
 		}
-	}()
-	wg.Add(1)
-
-	// HTTP
-	go func() {
-		defer wg.Done()
-		err := proxy.HTTPServer.Serve(proxy.HTTPNet)
-		if err != nil {
-			select {
-			case <-c:
-				return
-			default:
-				log.Println("Error: accept http connection ->", err)
-				e <- err
-			}
-		}
-	}()
-	log.Println("HTTP Server Listening ... ", proxy.HTTPNet.Addr().Network(), proxy.HTTPNet.Addr().String())
-
-	wg.Wait()
-	return err
+	}
+	return nil
 }

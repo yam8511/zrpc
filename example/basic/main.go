@@ -33,12 +33,13 @@ func (t *Arith) Diff(args *Args, diff *int) error {
 }
 
 func main() {
-	server := new(zrpc.Server)
+	server := zrpc.NewServer()
+	// server.SetServer("rpc")
 	isClient := flag.Bool("c", false, "if run client")
 	flag.Parse()
 
 	if *isClient {
-		runRPCClient(server.GetRPCAddress())
+		// runRPCClient(server.GetRPCAddress())
 		runJSONRPCClient(server.GetJSONRPCAddress())
 		return
 	}
