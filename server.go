@@ -69,20 +69,22 @@ func NewServer() *Server {
 
 // Init 初始化
 func (server *Server) Init() error {
-	if server.RPCNet == nil || server.RPCNet.Addr().Network() == "" {
-		l, e := net.Listen("tcp", server.GetRPCAddress())
-		if e != nil {
-			return e
+	if server.kind == "rpc" {
+		if server.RPCNet == nil || server.RPCNet.Addr().Network() == "" {
+			l, e := net.Listen("tcp", server.GetRPCAddress())
+			if e != nil {
+				return e
+			}
+			server.RPCNet = l
 		}
-		server.RPCNet = l
-	}
-
-	if server.JSONRPCNet == nil || server.JSONRPCNet.Addr().Network() == "" {
-		l, e := net.Listen("tcp", server.GetJSONRPCAddress())
-		if e != nil {
-			return e
+	} else {
+		if server.JSONRPCNet == nil || server.JSONRPCNet.Addr().Network() == "" {
+			l, e := net.Listen("tcp", server.GetJSONRPCAddress())
+			if e != nil {
+				return e
+			}
+			server.JSONRPCNet = l
 		}
-		server.JSONRPCNet = l
 	}
 
 	if server.HTTPNet == nil || server.HTTPNet.Addr().Network() == "" {
