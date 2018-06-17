@@ -64,7 +64,7 @@ func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	defer w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json")
 	if r.URL.EscapedPath() == "/services" {
 		err := json.NewEncoder(w).Encode(server.Services)
 		if err != nil {
@@ -124,6 +124,7 @@ func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // ServeHTTP 服務處理
 func (proxy *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	if r.URL.EscapedPath() == "/registry" {
 		var s []Service
 		for _, srv := range proxy.Services {
@@ -144,7 +145,6 @@ func (proxy *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	var data Input
 	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {

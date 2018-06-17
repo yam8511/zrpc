@@ -205,8 +205,16 @@ func (server *Server) SetTimeout(second int64) *Server {
 }
 
 // Register 註冊服務
-func (server *Server) Register(service interface{}) *Server {
-	rpc.Register(service)
+func (server *Server) Register(service interface{}) error {
+	err := rpc.Register(service)
+	if err != nil {
+		if server.debug {
+			log.Println("[ZRPC] =============================")
+			log.Printf("[ZRPC] 註冊服務失敗 -> %s\n", err.Error())
+			log.Println("[ZRPC] =============================")
+		}
+		return err
+	}
 	name, methods := ReflectMethod(service)
 	server.Services = append(server.Services, Service{
 		Name:    name,
@@ -220,12 +228,21 @@ func (server *Server) Register(service interface{}) *Server {
 		}
 		log.Println("[ZRPC] =============================")
 	}
-	return server
+	return nil
 }
 
 // RegisterName 註冊服務
-func (server *Server) RegisterName(name string, service interface{}) *Server {
-	rpc.RegisterName(name, service)
+func (server *Server) RegisterName(name string, service interface{}) error {
+	err := rpc.RegisterName(name, service)
+	if err != nil {
+		if server.debug {
+			log.Println("[ZRPC] =============================")
+			log.Printf("[ZRPC] 註冊服務失敗 -> %s\n", err.Error())
+			log.Println("[ZRPC] =============================")
+		}
+		return err
+	}
+
 	_, methods := ReflectMethod(service)
 	server.Services = append(server.Services, Service{
 		Name:    name,
@@ -239,7 +256,7 @@ func (server *Server) RegisterName(name string, service interface{}) *Server {
 		}
 		log.Println("[ZRPC] =============================")
 	}
-	return server
+	return nil
 }
 
 // Listen 監聽連線
