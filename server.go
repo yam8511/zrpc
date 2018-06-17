@@ -311,7 +311,9 @@ func (server *Server) Listen() error {
 					}
 					continue
 				}
-				log.Println("[ZRPC] Accept rpc connection")
+				if server.debug {
+					log.Printf("[ZRPC] Accept rpc connection from %s", conn.RemoteAddr())
+				}
 				// 設定連線timeout
 				if server.timeout > 0 {
 					conn.SetDeadline(time.Now().Add(time.Second * time.Duration(server.timeout)))
@@ -338,7 +340,11 @@ func (server *Server) Listen() error {
 					}
 					continue
 				}
-				log.Println("[ZRPC] Accept jsonrpc connection")
+
+				if server.debug {
+					log.Printf("[ZRPC] Accept jsonrpc connection from %s", conn.RemoteAddr())
+				}
+
 				// 設定連線timeout
 				if server.timeout > 0 {
 					conn.SetDeadline(time.Now().Add(time.Second * time.Duration(server.timeout)))
