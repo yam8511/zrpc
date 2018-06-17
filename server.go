@@ -282,14 +282,22 @@ func (server *Server) Listen() error {
 		case s := <-sig:
 			log.Printf("[ZRPC] ... Receive signal, shutdown by ... %v", s)
 			close(c)
-			server.RPCNet.Close()
-			server.JSONRPCNet.Close()
+			if server.RPCNet != nil {
+				server.RPCNet.Close()
+			}
+			if server.JSONRPCNet != nil {
+				server.JSONRPCNet.Close()
+			}
 			server.HTTPServer.Close()
 		case err = <-e:
 			log.Printf("[ZRPC] ... Listen get error ... %s", err.Error())
 			close(c)
-			server.RPCNet.Close()
-			server.JSONRPCNet.Close()
+			if server.RPCNet != nil {
+				server.RPCNet.Close()
+			}
+			if server.JSONRPCNet != nil {
+				server.JSONRPCNet.Close()
+			}
 			server.HTTPServer.Close()
 		}
 	}()
