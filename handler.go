@@ -170,9 +170,11 @@ func (proxy *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if proxy.debug {
-		log.Printf("[ZRPC] Server (%s), Redirect to %s", data.Service, data.Address)
-	}
+
+	// 先接收輸入的adress
+	var address = data.Address
+
+	// 檢查服務是否存在
 	service, ok := proxy.Services[data.Service]
 	if !ok {
 		err = json.NewEncoder(w).Encode(Output{
@@ -190,8 +192,16 @@ func (proxy *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	// 如果沒有輸入address，取註冊服務的address
+	if address == "" {
+		address = service.RPCAddress
+	}
 
-	res, err := transferJSONRPCClient(service.RPCAddress, data.Method, data.Params)
+	if proxy.debug {
+		log.Printf("[ZRPC] Server (%s), Redirect to %s", service.Name, address)
+	}
+
+	res, err := transferJSONRPCClient(address, data.Method, data.Params)
 	if err != nil {
 		err = json.NewEncoder(w).Encode(Output{
 			Result: nil,
