@@ -3,6 +3,7 @@ package zrpc
 import (
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 )
 
@@ -84,7 +85,7 @@ func head() string {
 
 		/* Dropdown button */
 		.dropdown .dropbtn {
-			font-size: 16px; 
+			font-size: 16px;
 			border: none;
 			outline: none;
 			color: white;
@@ -224,7 +225,17 @@ func services(services map[string]Service) (html string) {
 		</tr>
 	`
 
-	for name, service := range services {
+	serviceName := []string{}
+	for _, srv := range services {
+		serviceName = append(serviceName, srv.Name)
+	}
+	sort.Strings(serviceName)
+
+	for _, name := range serviceName {
+		service, ok := services[name]
+		if !ok {
+			continue
+		}
 		if strings.HasPrefix(service.RPCAddress, ":") {
 			rpcAddr = "0.0.0.0" + service.RPCAddress
 		} else {
