@@ -142,8 +142,19 @@ func (proxy *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if proxy.ui && strings.HasPrefix(r.URL.EscapedPath(), "/ui") {
-		proxy.WebUI(w, r)
+
+	if r.Method == "GET" {
+		if !proxy.ui {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		if strings.HasPrefix(r.URL.EscapedPath(), "/ui") {
+			proxy.WebUI(w, r)
+			return
+		}
+
+		http.Redirect(w, r, "/ui", http.StatusTemporaryRedirect)
 		return
 	}
 
