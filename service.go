@@ -20,7 +20,7 @@ type Service struct {
 func ReflectMethod(service interface{}) (name string, methods map[string]string) {
 	name = reflect.TypeOf(service).String()
 	methods = map[string]string{}
-	// 遍历对象中的方法
+	// 遍歷物件中的方法
 	for m := 0; m < reflect.TypeOf(service).NumMethod(); m++ {
 		method := reflect.TypeOf(service).Method(m)
 		methodType := strings.Replace(method.Type.String(), name+", ", "", 1)

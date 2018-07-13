@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
-	"sync"
 	"syscall"
 	"time"
 )
@@ -27,6 +26,11 @@ type Server struct {
 	kind        string
 	timeout     int64
 	debug       bool
+	online      int
+	rpcIn       chan string
+	rpcOut      chan string
+	httpIn      chan string
+	httpOut     chan string
 }
 
 // NewServer 建立一個伺服器
@@ -43,12 +47,20 @@ func NewServer() *Server {
 			kind:     rpcKind,
 			RPCAddr:  rpcAddr,
 			HTTPAddr: httpAddr,
+			rpcIn:    make(chan string),
+			rpcOut:   make(chan string),
+			httpIn:   make(chan string),
+			httpOut:  make(chan string),
 		}
 	} else {
 		server = &Server{
 			kind:        "jsonrpc",
 			JSONRPCAddr: rpcAddr,
 			HTTPAddr:    httpAddr,
+			rpcIn:       make(chan string),
+			rpcOut:      make(chan string),
+			httpIn:      make(chan string),
+			httpOut:     make(chan string),
 		}
 	}
 
@@ -270,105 +282,90 @@ func (server *Server) Listen() error {
 
 	// 設置關閉機制
 	var (
-		err error
-		sig = make(chan os.Signal)
-		c   = make(chan int)
-		e   = make(chan error)
-		wg  = new(sync.WaitGroup)
+		err     error
+		sig     = make(chan os.Signal)
+		prevSig os.Signal
+		c       = make(chan int)
+		e       = make(chan error)
+		done    bool
 	)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL)
+
+	// RPC
 	go func() {
-		select {
-		case s := <-sig:
-			log.Printf("[ZRPC] ... Receive signal, shutdown by ... %v", s)
-			close(c)
-			if server.RPCNet != nil {
-				server.RPCNet.Close()
-			}
-			if server.JSONRPCNet != nil {
-				server.JSONRPCNet.Close()
-			}
-			server.HTTPServer.Close()
-		case err = <-e:
-			log.Printf("[ZRPC] ... Listen get error ... %s", err.Error())
-			close(c)
-			if server.RPCNet != nil {
-				server.RPCNet.Close()
-			}
-			if server.JSONRPCNet != nil {
-				server.JSONRPCNet.Close()
-			}
-			server.HTTPServer.Close()
+		switch server.kind {
+		case "rpc":
+			// RPC
+			log.Println("[ZRPC] RPC Server Listening ... ", server.RPCNet.Addr().Network(), server.RPCNet.Addr().String())
+			go func() {
+				for {
+					conn, err := server.RPCNet.Accept()
+					if err != nil {
+						select {
+						case <-c:
+							return
+						default:
+							log.Println("[ZRPC] Error: accept rpc connection ->", err)
+							e <- err
+						}
+						continue
+					}
+					if server.debug {
+						log.Printf("[ZRPC] Accept rpc connection from %s", conn.RemoteAddr())
+					}
+					// 設定連線timeout
+					if server.timeout > 0 {
+						conn.SetDeadline(time.Now().Add(time.Second * time.Duration(server.timeout)))
+					}
+					go func() {
+						ip := conn.RemoteAddr().String()
+						server.rpcIn <- ip
+						jsonrpc.ServeConn(conn)
+						server.rpcOut <- ip
+					}()
+				}
+			}()
+			break
+		case "jsonrpc":
+			// JSON-RPC
+			log.Println("[ZRPC] JSON-RPC Server Listening ... ", server.JSONRPCNet.Addr().Network(), server.JSONRPCNet.Addr().String())
+			go func() {
+				for {
+					conn, err := server.JSONRPCNet.Accept()
+					if err != nil {
+						select {
+						case <-c:
+							return
+						default:
+							log.Println("[ZRPC] Error: accept jsonrpc connection ->", err)
+							e <- err
+						}
+						continue
+					}
+
+					if server.debug {
+						log.Printf("[ZRPC] Accept jsonrpc connection from %s", conn.RemoteAddr())
+					}
+
+					// 設定連線timeout
+					if server.timeout > 0 {
+						conn.SetDeadline(time.Now().Add(time.Second * time.Duration(server.timeout)))
+					}
+					go func(conn net.Conn) {
+						ip := conn.RemoteAddr().String()
+						server.rpcIn <- ip
+						jsonrpc.ServeConn(conn)
+						server.rpcOut <- ip
+					}(conn)
+				}
+			}()
+			break
 		}
 	}()
 
-	switch server.kind {
-	case "rpc":
-		// RPC
-		wg.Add(1)
-		log.Println("[ZRPC] RPC Server Listening ... ", server.RPCNet.Addr().Network(), server.RPCNet.Addr().String())
-		go func() {
-			defer wg.Done()
-			for {
-				conn, err := server.RPCNet.Accept()
-				if err != nil {
-					select {
-					case <-c:
-						return
-					default:
-						log.Println("[ZRPC] Error: accept rpc connection ->", err)
-						e <- err
-					}
-					continue
-				}
-				if server.debug {
-					log.Printf("[ZRPC] Accept rpc connection from %s", conn.RemoteAddr())
-				}
-				// 設定連線timeout
-				if server.timeout > 0 {
-					conn.SetDeadline(time.Now().Add(time.Second * time.Duration(server.timeout)))
-				}
-				go rpc.ServeConn(conn)
-			}
-		}()
-		break
-	case "jsonrpc":
-		// JSON-RPC
-		wg.Add(1)
-		log.Println("[ZRPC] JSON-RPC Server Listening ... ", server.JSONRPCNet.Addr().Network(), server.JSONRPCNet.Addr().String())
-		go func() {
-			defer wg.Done()
-			for {
-				conn, err := server.JSONRPCNet.Accept()
-				if err != nil {
-					select {
-					case <-c:
-						return
-					default:
-						log.Println("[ZRPC] Error: accept jsonrpc connection ->", err)
-						e <- err
-					}
-					continue
-				}
-
-				if server.debug {
-					log.Printf("[ZRPC] Accept jsonrpc connection from %s", conn.RemoteAddr())
-				}
-
-				// 設定連線timeout
-				if server.timeout > 0 {
-					conn.SetDeadline(time.Now().Add(time.Second * time.Duration(server.timeout)))
-				}
-				go jsonrpc.ServeConn(conn)
-			}
-		}()
-		break
-	}
-
 	// HTTP
-	wg.Add(1)
 	go func() {
-		defer wg.Done()
+		log.Println("[ZRPC] HTTP Server Listening ... ", server.HTTPNet.Addr().Network(), server.HTTPNet.Addr().String())
 		err := server.HTTPServer.Serve(server.HTTPNet)
 		if err != nil {
 			select {
@@ -380,8 +377,44 @@ func (server *Server) Listen() error {
 			}
 		}
 	}()
-	log.Println("[ZRPC] HTTP Server Listening ... ", server.HTTPNet.Addr().Network(), server.HTTPNet.Addr().String())
 
-	wg.Wait()
-	return err
+	for {
+		prevSig, done = server.delectSignal(done, sig, prevSig)
+		if done {
+			log.Printf("[ZRPC] ... Receive signal, shutdown by ... %v", prevSig)
+			close(c)
+			if server.RPCNet != nil {
+				server.RPCNet.Close()
+			}
+			if server.JSONRPCNet != nil {
+				server.JSONRPCNet.Close()
+			}
+			for {
+				if server.online <= 0 {
+					break
+				}
+				done, prevSig, err = server.waitConnection(done, sig, prevSig, e)
+			}
+			if server.HTTPServer != nil {
+				server.HTTPServer.Close()
+			}
+			return nil
+		}
+
+		done, prevSig, err = server.waitConnection(done, sig, prevSig, e)
+		if err != nil {
+			log.Printf("[ZRPC] ... Listen get error ... %s", err.Error())
+			close(c)
+			if server.RPCNet != nil {
+				server.RPCNet.Close()
+			}
+			if server.JSONRPCNet != nil {
+				server.JSONRPCNet.Close()
+			}
+			if server.HTTPServer != nil {
+				server.HTTPServer.Close()
+			}
+			return err
+		}
+	}
 }

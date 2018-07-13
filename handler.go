@@ -39,6 +39,12 @@ func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ip := r.RemoteAddr
+	server.httpIn <- ip
+	defer func(ip string) {
+		server.httpOut <- ip
+	}(ip)
+
 	if server.debug {
 		switch r.URL.EscapedPath() {
 		case "/debug/pprof/cmdline":
