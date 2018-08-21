@@ -16,6 +16,12 @@ type Args struct {
 
 // Sum 總和
 func (t *Arith) Sum(args *Args, sum *int) error {
+	if args.A == 0 && args.B == 0 {
+		return zrpc.NewZrpcError("422", "缺少參數", map[string]int{
+			"A": args.A,
+			"B": args.B,
+		})
+	}
 	time.Sleep(time.Second * 1)
 	*sum = args.A + args.B
 	return nil
@@ -23,6 +29,12 @@ func (t *Arith) Sum(args *Args, sum *int) error {
 
 // Diff 差和
 func (t *Arith) Diff(args *Args, diff *int) error {
+	if args.A == 0 && args.B == 0 {
+		return zrpc.NewZrpcError("422", "缺少參數", map[string]int{
+			"A": args.A,
+			"B": args.B,
+		})
+	}
 	*diff = args.A - args.B
 	return nil
 }

@@ -21,6 +21,12 @@ type Args struct {
 
 // Sum 總和
 func (t *Arith) Sum(args *Args, sum *int) error {
+	if args.A == 0 && args.B == 0 {
+		return zrpc.NewZrpcError("422", "缺少參數", map[string]int{
+			"A": args.A,
+			"B": args.B,
+		})
+	}
 	time.Sleep(time.Second * 1)
 	*sum = args.A + args.B
 	return nil
@@ -28,6 +34,12 @@ func (t *Arith) Sum(args *Args, sum *int) error {
 
 // Diff 差和
 func (t *Arith) Diff(args *Args, diff *int) error {
+	if args.A == 0 && args.B == 0 {
+		return zrpc.NewZrpcError("422", "缺少參數", map[string]int{
+			"A": args.A,
+			"B": args.B,
+		})
+	}
 	*diff = args.A - args.B
 	return nil
 }
@@ -64,7 +76,12 @@ func runRPCClient(address string) {
 	var sum int
 	err = client.Call("arith.Sum", args, &sum)
 	if err != nil {
-		log.Fatal("arith error:", err)
+		jerr, yes := zrpc.IsZrpcError(err)
+		if yes {
+			log.Fatalf("arith error: code %s, message %s, data %v", jerr.Code, jerr.Message, jerr.Data)
+		} else {
+			log.Fatalf("arith error: %s", err.Error())
+		}
 	}
 	fmt.Printf("Arith: req -> %v , res -> %v\n", args, sum)
 }
@@ -81,7 +98,12 @@ func runJSONRPCClient(address string) {
 	var sum int
 	err = client.Call("arith.Sum", args, &sum)
 	if err != nil {
-		log.Fatal("arith error:", err)
+		jerr, yes := zrpc.IsZrpcError(err)
+		if yes {
+			log.Fatalf("arith error: code %s, message %s, data %v", jerr.Code, jerr.Message, jerr.Data)
+		} else {
+			log.Fatalf("arith error: %s", err.Error())
+		}
 	}
 	fmt.Printf("Arith: req -> %v , res -> %v\n", args, sum)
 }

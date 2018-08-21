@@ -1,6 +1,7 @@
 package zrpc
 
 import (
+	"encoding/json"
 	"log"
 	"os"
 )
@@ -74,4 +75,20 @@ func (server *Server) waitConnection(done bool, sig chan os.Signal, prevSig os.S
 		}
 	}
 	return done, prevSig, nil
+}
+
+// IsZrpcError 是否為套件的錯誤型態
+func IsZrpcError(e error) (detail *ErrorDetail, yes bool) {
+	err := json.Unmarshal([]byte(e.Error()), &detail)
+	yes = err == nil
+	return
+}
+
+// NewZrpcError 建立ZRPC的錯誤
+func NewZrpcError(code, message string, data interface{}) *ErrorDetail {
+	return &ErrorDetail{
+		Code:    code,
+		Message: message,
+		Data:    data,
+	}
 }

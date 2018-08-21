@@ -9,29 +9,6 @@ import (
 	"strings"
 )
 
-// Input 輸出參數
-type Input struct {
-	Service string      `json:"service"`
-	Method  string      `json:"method"`
-	Params  interface{} `json:"params"`
-	ID      int         `json:"id"`
-	Address string      `json:"address"`
-}
-
-// ErrorDetail 錯誤細節
-type ErrorDetail struct {
-	Code    int         `json:"code"`
-	Message string      `json:"message"`
-	Data    interface{} `json:"data"`
-}
-
-// Output 輸出參數
-type Output struct {
-	Result interface{} `json:"result"`
-	Error  interface{} `json:"error"`
-	ID     int         `json:"id"`
-}
-
 // ServeHTTP 服務處理
 func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.RequestURI == "/favicon.ico" {
@@ -86,7 +63,7 @@ func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		err = json.NewEncoder(w).Encode(Output{
 			Result: nil,
 			Error: ErrorDetail{
-				Code:    500,
+				Code:    "500",
 				Message: err.Error(),
 				Data:    err,
 			},
@@ -104,15 +81,25 @@ func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := transferJSONRPCClient(address, data.Method, data.Params)
 	if err != nil {
-		err = json.NewEncoder(w).Encode(Output{
+		output := Output{
 			Result: nil,
-			Error: ErrorDetail{
-				Code:    500,
+			Error:  nil,
+			ID:     data.ID,
+		}
+
+		jsonrpcErr, yes := IsZrpcError(err)
+		if yes {
+			output.Error = jsonrpcErr
+		} else {
+			log.Println("[ZRPC] JSON DECODE Error ->", err)
+			output.Error = ErrorDetail{
+				Code:    "500",
 				Message: err.Error(),
 				Data:    err,
-			},
-			ID: data.ID,
-		})
+			}
+		}
+
+		err = json.NewEncoder(w).Encode(output)
 		if err != nil {
 			log.Println("[ZRPC] Response Error ->", err)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -175,7 +162,7 @@ func (proxy *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		err = json.NewEncoder(w).Encode(Output{
 			Result: nil,
 			Error: ErrorDetail{
-				Code:    500,
+				Code:    "500",
 				Message: err.Error(),
 				Data:    err,
 			},
@@ -197,7 +184,7 @@ func (proxy *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		err = json.NewEncoder(w).Encode(Output{
 			Result: nil,
 			Error: ErrorDetail{
-				Code:    500,
+				Code:    "500",
 				Message: "Service Not Found",
 				Data:    "Service: " + data.Service,
 			},
@@ -220,15 +207,25 @@ func (proxy *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	res, err := transferJSONRPCClient(address, data.Method, data.Params)
 	if err != nil {
-		err = json.NewEncoder(w).Encode(Output{
+		output := Output{
 			Result: nil,
-			Error: ErrorDetail{
-				Code:    500,
+			Error:  nil,
+			ID:     data.ID,
+		}
+
+		jsonrpcErr, yes := IsZrpcError(err)
+		if yes {
+			output.Error = jsonrpcErr
+		} else {
+			log.Println("[ZRPC] JSON DECODE Error ->", err)
+			output.Error = ErrorDetail{
+				Code:    "500",
 				Message: err.Error(),
 				Data:    err,
-			},
-			ID: data.ID,
-		})
+			}
+		}
+
+		err = json.NewEncoder(w).Encode(output)
 		if err != nil {
 			log.Println("[ZRPC] Response Error ->", err)
 			w.WriteHeader(http.StatusInternalServerError)
